@@ -4,15 +4,15 @@ import os
 import json
 import uuid
 
-# ========== API SETUP ==========
+# ========== API SETUP - GEMINI 2.5 FLASH (2025 UPDATE) ==========
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash")  # FIXED: 2.5 (1.5 retired)
 except Exception as e:
     st.error(f"❌ API Error: {e}")
     st.stop()
 
-# ========== PAGE CONFIG (1X ONLY!) ==========
+# ========== PAGE CONFIG ==========
 st.set_page_config(
     page_title="LMS Interaktif EduAI",
     page_icon="🎓",
@@ -22,7 +22,7 @@ st.set_page_config(
 
 # ========== SESSION STATE ==========
 if 'role' not in st.session_state:
-    st.session_state.role = None
+    st.session_state.role = none
 
 # ========== SIDEBAR ==========
 with st.sidebar:
@@ -31,7 +31,7 @@ with st.sidebar:
     
     if selected_role and selected_role != st.session_state.role:
         st.session_state.role = selected_role
-        st.rerun()  # FIXED: Refresh on role change
+        st.rerun()
 
 # ========== MAIN PAGE ==========
 st.title("🚀 LMS Interaktif dengan Gemini AI")
@@ -52,7 +52,7 @@ if st.session_state.role == "👨‍🏫 Guru":
         if st.button("🚀 Generate LKPD", use_container_width=True):
             if theme:
                 with st.spinner("🤖 AI sedang merancang LKPD Anda..."):
-                    # Generate LKPD with Gemini
+                    # Generate LKPD with Gemini 2.5
                     prompt = f"""
                     Buat LKPD interaktif untuk tema "{theme}" dalam format JSON sahaja:
                     {{
@@ -73,7 +73,7 @@ if st.session_state.role == "👨‍🏫 Guru":
                           "nama": "Kegiatan 2",
                           "petunjuk": "Petunjuk langkah",
                           "tugas_interaktif": ["Tugas 1"],
-                          "pertanyaan_pemantif": [
+                          "pertanyaan_pemantik": [
                             {{"pertanyaan": "Pertanyaan 1"}}
                           ]
                         }}
@@ -87,8 +87,8 @@ if st.session_state.role == "👨‍🏫 Guru":
                         
                         # Save LKPD
                         lkpd_id = str(uuid.uuid4())[:8]
-                        filepath = os.path.join("lkpd_outputs", f"{lkpd_id}.json")
                         os.makedirs("lkpd_outputs", exist_ok=True)
+                        filepath = os.path.join("lkpd_outputs", f"{lkpd_id}.json")
                         with open(filepath, 'w', encoding='utf-8') as f:
                             json.dump(lkpd_data, f, ensure_ascii=False, indent=2)
                         
@@ -111,6 +111,8 @@ if st.session_state.role == "👨‍🏫 Guru":
                                 for q in kegiatan['pertanyaan_pemantik']:
                                     st.markdown(f"❓ {q['pertanyaan']}")
                         
+                    except json.JSONDecodeError:
+                        st.error("❌ JSON parsing error - AI response invalid.")
                     except Exception as e:
                         st.error(f"❌ Gagal generate LKPD: {e}")
             else:
@@ -133,7 +135,6 @@ elif st.session_state.role == "👩‍🎓 Siswa":
             
             st.success(f"✅ LKPD '{lkpd_data['judul']}' dimuat!")
             
-            # Display LKPD for student
             st.markdown("---")
             st.subheader(lkpd_data['judul'])
             st.info(lkpd_data['materi_singkat'])
@@ -148,7 +149,7 @@ elif st.session_state.role == "👩‍🎓 Siswa":
                     st.markdown("**Pertanyaan Pemantik - Isi Jawaban Anda:**")
                     for j, q in enumerate(kegiatan['pertanyaan_pemantik']):
                         key = f"ans_{i}_{j}"
-                        answer = st.text_area(f"{j+1}. {q['pertanyaan']}", key=key, height=80)
+                        st.text_area(f"{j+1}. {q['pertanyaan']}", key=key, height=80)
             
             if st.button("✨ Kirim Jawaban & Minta Feedback", use_container_width=True):
                 st.info("Feedback akan segera hadir! 🎉")
@@ -158,4 +159,4 @@ elif st.session_state.role == "👩‍🎓 Siswa":
         st.info("Masukkan ID LKPD dari guru Anda untuk memulai.")
 
 st.markdown("---")
-st.markdown("**Powered by Google Gemini AI**")
+st.markdown("**Powered by Google Gemini AI 2.5**")
