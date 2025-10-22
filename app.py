@@ -22,7 +22,7 @@ st.set_page_config(
 
 # ========== SESSION STATE ==========
 if 'role' not in st.session_state:
-    st.session_state.role = none
+    st.session_state.role = None
 
 # ========== SIDEBAR ==========
 with st.sidebar:
@@ -160,3 +160,4 @@ elif st.session_state.role == "👩‍🎓 Siswa":
 
 st.markdown("---")
 st.markdown("**Powered by Google Gemini AI 2.5**")
+
