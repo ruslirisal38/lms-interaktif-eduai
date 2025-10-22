@@ -1,126 +1,120 @@
 import google.generativeai as genai
 import streamlit as st
 import os
-import time
+import json
+import uuid # Menggunakan uuid untuk ID yang unik dan stabil
 
-# --- Pengecekan dan Inisialisasi API Key ---
-# API Key harus diatur di Secrets Streamlit
-def is_api_key_set():
-    # Menggunakan st.secrets.get() untuk menghindari KeyError jika GEMINI_API_KEY tidak ada
-    return st.secrets.get('GEMINI_API_KEY') is not None
+# --- PENTING: PENGATURAN API KEY ---
+# API Key diambil dari Streamlit Secrets, yang telah Anda atur di Advanced Settings.
+try:
+    API_KEY = st.secrets["GEMINI_API_KEY"]
+except KeyError:
+    # Error ini muncul jika Secret Key tidak diatur
+    st.error("❌ GEMINI_API_KEY tidak ditemukan di Streamlit Secrets. Harap atur kunci Anda di Advanced Settings.")
+    st.stop()
 
-def initialize_gemini():
-    if is_api_key_set():
+# Inisialisasi Klien Gemini
+try:
+    genai.configure(api_key=API_KEY)
+    client = genai.Client()
+except Exception as e:
+    st.error(f"❌ Gagal menginisialisasi Gemini Client: {e}")
+    st.stop()
+
+# Model yang digunakan
+MODEL_LKPD = "gemini-2.5-flash"
+MODEL_QA = "gemini-2.5-flash"
+
+# --- Fungsi Manajemen File LKPD ---
+LKPD_DIR = "lkpd_outputs" # Nama folder untuk menyimpan output LKPD
+
+def check_lkpd_existence():
+    """Memastikan folder LKPD_DIR ada. Sangat penting untuk deployment."""
+    if not os.path.exists(LKPD_DIR):
         try:
-            # Gunakan st.secrets.get() untuk mengambil nilai API Key
-            api_key = st.secrets.get('GEMINI_API_KEY')
-            genai.configure(api_key=api_key)
-            return genai.Client()
+            # os.makedirs membuat folder secara rekursif jika belum ada
+            os.makedirs(LKPD_DIR)
+            print(f"Direktori '{LKPD_DIR}' berhasil dibuat.")
+            return True
+        except OSError as e:
+            # Streamlit Cloud memiliki izin terbatas, ini menangani error jika gagal
+            print(f"ERROR: Gagal membuat direktori '{LKPD_DIR}': {e}")
+            return False
+    return True
+
+def save_lkpd(lkpd_id, data):
+    """Menyimpan data LKPD ke file JSON."""
+    if check_lkpd_existence():
+        filepath = os.path.join(LKPD_DIR, f"{lkpd_id}.json")
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            return True
         except Exception as e:
-            # Jika inisialisasi gagal, tampilkan error di log Streamlit
-            print(f"ERROR: Gagal menginisialisasi Gemini Client: {e}")
+            print(f"ERROR: Gagal menyimpan file LKPD: {e}")
+            return False
+    return False
+
+def load_lkpd(lkpd_id):
+    """Memuat data LKPD dari file JSON."""
+    filepath = os.path.join(LKPD_DIR, f"{lkpd_id}.json")
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"ERROR: Gagal memuat file LKPD: {e}")
             return None
     return None
 
-# Panggil inisialisasi hanya sekali
-client = initialize_gemini()
-
-# --- Fungsi untuk Membuat LKPD (Mode Guru) ---
-def generate_lkpd(tema: str, kelas: str, materi_tambahan: str):
-    if not client:
-        return None, None
-
-    # Menggunakan ID berbasis timestamp untuk keunikan
-    lkpd_id = hex(int(time.time()))[2:10] # ID 8 karakter heksadesimal
+# --- Fungsi Generasi LKPD menggunakan Gemini ---
+def generate_lkpd(theme):
+    """Membuat struktur LKPD interaktif menggunakan Gemini AI."""
+    st.info("AI sedang merancang LKPD Anda... Harap tunggu sebentar.")
     
-    # Memastikan LKPD disimpan di session state (bukan di disk, karena Streamlit Cloud read-only)
-    if 'lkpd_storage' not in st.session_state:
-        st.session_state['lkpd_storage'] = {}
+    prompt = f"""
+    Anda adalah ahli kurikulum dan guru fisika/sains yang berpengalaman.
+    Tugas Anda adalah membuat kerangka (outline) untuk Lembar Kerja Peserta Didik (LKPD) yang interaktif, menarik, dan terstruktur dengan baik.
+    LKPD ini harus berfokus pada tema/topik: "{theme}".
 
-    system_prompt = (
-        f"Anda adalah seorang pengembang konten pendidikan yang ahli dalam membuat Lembar Kerja Peserta Didik (LKPD) yang menarik dan berstandar {kelas}. "
-        "Tugas Anda adalah membuat satu set LKPD interaktif untuk topik yang diberikan. "
-        "Output harus berupa teks format Markdown, BUKAN JSON, yang mencakup Judul, Tujuan Pembelajaran, Instruksi, dan Pertanyaan Kritis."
-    )
+    Hasilkan output dalam format JSON MURNI (tidak ada teks atau komentar di luar kurung kurawal) yang mengikuti skema berikut:
 
-    user_prompt = (
-        f"Buatkan LKPD interaktif untuk tingkat {kelas} dengan topik utama: **{tema}**. "
-        f"Materi tambahan/konteks spesifik: {materi_tambahan if materi_tambahan else 'Tidak ada.'}. "
-        "Format LKPD harus sebagai berikut:\n"
-        "1. Judul (H1)\n"
-        "2. Tujuan Pembelajaran (Daftar berpoin)\n"
-        "3. Pertanyaan Pemanasan/Apersepsi\n"
-        "4. Inti Pertanyaan Kritis (Minimal 3 pertanyaan terbuka yang memicu analisis siswa).\n"
-        "Jawab hanya konten LKPD dalam format Markdown, tanpa penjelasan pendahuluan atau penutup."
-    )
+    {{
+      "judul": "Judul LKPD yang Menarik dan Relevan",
+      "tujuan_pembelajaran": ["Daftar tujuan pembelajaran yang jelas dan terukur"],
+      "materi_singkat": "Penjelasan singkat (1-2 paragraf) tentang konsep dasar tema",
+      "kegiatan": [
+        {{
+          "nama": "Nama Kegiatan (misalnya: Eksplorasi Konsep)",
+          "petunjuk": "Petunjuk langkah-langkah yang harus dilakukan siswa",
+          "pertanyaan_pemantik": [
+            {{
+              "pertanyaan": "Pertanyaan yang memancing diskusi atau pemikiran",
+              "tipe": "essay"
+            }}
+          ],
+          "tugas_interaktif": [
+            "Tugas praktikum sederhana/observasi yang dapat dilakukan siswa (maksimal 2)"
+          ]
+        }}
+      ]
+    }}
 
+    Tambahkan minimal 2-3 objek kegiatan serupa (di dalam array "kegiatan") untuk membuat LKPD yang komprehensif. Pastikan output Anda adalah JSON yang valid.
+    """
+    
     try:
+        # Panggil Gemini API
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=user_prompt,
-            config=genai.types.GenerateContentConfig(
-                system_instruction=system_prompt,
-            )
+            model=MODEL_LKPD,
+            contents=prompt
         )
         
-        lkpd_content = response.text
-        
-        # Simpan konten di Streamlit session state
-        st.session_state['lkpd_storage'][lkpd_id] = {
-            'content': lkpd_content,
-            'tema': tema,
-            'kelas': kelas
-        }
-        
-        return lkpd_id, lkpd_content
-
+        # Membersihkan respons untuk memastikan JSON valid
+        json_string = response.text.strip().replace("```json", "").replace("```", "")
+        return json.loads(json_string)
+    
     except Exception as e:
-        # Tampilkan pesan error yang lebih informatif
-        print(f"ERROR: Terjadi error saat memanggil Gemini API: {e}")
-        st.error(f"Terjadi error saat memanggil Gemini API. Cek log Streamlit untuk detail.")
-        return None, None
-
-# --- Fungsi untuk Memuat LKPD (Mode Siswa) ---
-def check_lkpd_existence(lkpd_id: str):
-    if 'lkpd_storage' in st.session_state and lkpd_id in st.session_state['lkpd_storage']:
-        return st.session_state['lkpd_storage'][lkpd_id]['content']
-    return None
-
-def load_lkpd(lkpd_id: str, mode: str, user_answer: str = ""):
-    if not client:
-        return "Gemini Client tidak terinisialisasi. Cek API Key Anda."
-        
-    if mode == "feedback":
-        lkpd_data = st.session_state['lkpd_storage'].get(lkpd_id)
-        if not lkpd_data:
-            return "Data LKPD tidak ditemukan di sesi ini."
-            
-        lkpd_content = lkpd_data['content']
-        tema = lkpd_data['tema']
-
-        system_prompt = (
-            "Anda adalah asisten koreksi otomatis yang ramah. Berikan umpan balik yang konstruktif dan suportif "
-            "terhadap jawaban siswa. Fokus pada elemen yang benar dan berikan saran singkat untuk perbaikan. "
-            "Jangan memberikan nilai, cukup umpan balik kualitatif dalam 3-4 kalimat."
-        )
-        
-        user_prompt = (
-            f"Berikut adalah LKPD dengan topik '{tema}' dan Jawaban Siswa:\n\n"
-            f"--- LKPD ---\n{lkpd_content}\n\n"
-            f"--- Jawaban Siswa ---\n{user_answer}\n\n"
-            "Berikan umpan balik kualitatif yang membangun dan ringkas untuk jawaban siswa ini."
-        )
-        
-        try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=user_prompt,
-                config=genai.types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                )
-            )
-            return response.text
-        except Exception as e:
-            return f"Gagal mendapatkan umpan balik dari Gemini: {e}. Cek log Streamlit untuk detail."
-
-    return "Mode pemuatan tidak dikenal."
+        st.error(f"❌ Gagal menghasilkan LKPD dari AI. Error: {e}")
+        st.error("Pastikan format prompt dan kunci API Gemini Anda benar.")
+        return None
