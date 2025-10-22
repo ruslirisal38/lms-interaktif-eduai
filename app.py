@@ -1,5 +1,5 @@
 import streamlit as st
-from gemini_config import generate_lkpd, check_lkpd_existence, load_lkpd, client, MODEL_QA, save_lkpd
+from gemini_config import generate_lkpd, check_lkpd_existence, load_lkpd, save_lkpd
 import uuid
 import json
 
@@ -218,3 +218,4 @@ elif st.session_state.role == "Siswa":
 
         else:
             st.error("❌ ID LKPD tidak valid atau tidak ditemukan. Mohon periksa kembali ID yang Anda masukkan.")
+
